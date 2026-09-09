@@ -90,6 +90,30 @@
   .pace-note.behind { color: var(--amber); }
   .pace-note.onpace { color: var(--muted); }
 
+  /* ── A / B SPLIT ────────────────────────────────────── */
+  .split {
+    display: flex; align-items: stretch; gap: 8px;
+    max-width: 470px; margin: 20px auto 0;
+  }
+  .split-half {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 11px; padding: 11px 10px; text-align: center;
+  }
+  .split-half.a { border-color: rgba(79,209,197,0.45); }
+  .split-half.b { border-style: dashed; }
+  .split-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1.3px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .split-half.a .split-label { color: var(--accent); }
+  .split-range { font-size: 13px; font-weight: 600; margin-top: 4px; }
+  .split-days { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+  .split-arrow { align-self: center; color: var(--muted); font-size: 15px; flex-shrink: 0; }
+  @media (max-width: 420px) {
+    .split { flex-direction: column; gap: 6px; }
+    .split-arrow { transform: rotate(90deg); font-size: 13px; }
+  }
+
   /* ── STATS ──────────────────────────────────────────── */
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-bottom: 22px; }
   .stat {
@@ -305,7 +329,21 @@
   <div class="header">
     <div class="eyebrow">Double Pace · Fall 2026</div>
     <h1>AMP Calculus <em>I</em><br>Course A &amp; B in One Semester</h1>
-    <div class="sub">Sep 8 → Dec 18 &nbsp;·&nbsp; Course A target <b id="h-target">—</b></div>
+    <div class="sub">Sep 8 → Jan 13 &nbsp;·&nbsp; Course A target <b id="h-target">—</b></div>
+
+    <div class="split">
+      <div class="split-half a">
+        <div class="split-label">Course A</div>
+        <div class="split-range" id="sp-a">—</div>
+        <div class="split-days" id="sp-ad">—</div>
+      </div>
+      <div class="split-arrow">→</div>
+      <div class="split-half b">
+        <div class="split-label">Course B</div>
+        <div class="split-range" id="sp-b">—</div>
+        <div class="split-days" id="sp-bd">—</div>
+      </div>
+    </div>
   </div>
 
   <div class="stats">
@@ -328,7 +366,8 @@
   <div class="panel finish">
     <div class="glyph">∫</div>
     <h2>Course A complete → Course B begins</h2>
-    <p>Finishing Course A by <b id="f-target">—</b> leaves the rest of the semester for Course B.<br>
+    <p>Finishing Course A by <b id="f-target">—</b> hands the second half of the semester to
+       Course B, through <b>Jan 13</b>.<br>
        Drop the Course B syllabus into the <code>units</code> array to extend this tracker.</p>
   </div>
 
@@ -503,7 +542,24 @@ const units = [
 
 // ═══ SCHEDULE ═══════════════════════════════════════════════════════
 const SEM_START = new Date(2026, 8, 8);   // Sep 8 2026
-const SEM_END   = new Date(2026, 11, 18); // Dec 18 2026
+const SEM_END   = new Date(2027, 0, 13);  // Jan 13 2027 — end of the semester
+
+// No work is scheduled inside these ranges (inclusive). Course A finishes
+// well before winter break, so this only shapes the Course B half — adjust
+// the dates to whatever the school calendar actually says.
+const BREAKS = [
+  { name: "Thanksgiving break", from: new Date(2026, 10, 25), to: new Date(2026, 10, 27) },
+  { name: "Winter break",       from: new Date(2026, 11, 21), to: new Date(2027, 0, 3)  },
+];
+
+function breakOn(date) {
+  const d = new Date(date); d.setHours(0,0,0,0);
+  return BREAKS.find(b => {
+    const f = new Date(b.from); f.setHours(0,0,0,0);
+    const t = new Date(b.to);   t.setHours(23,59,59,999);
+    return d >= f && d <= t;
+  }) || null;
+}
 
 // Double pace: 2 items per weekday instead of the normal 1, so Course A
 // clears in roughly half a semester and Course B gets the other half.
@@ -526,7 +582,8 @@ function buildSchedule() {
   const d = new Date(SEM_START);
   while (d <= SEM_END && idx < flat.length) {
     const dow = d.getDay();
-    const cap = capacityFor(dow);
+    const brk = breakOn(d);
+    const cap = brk ? 0 : capacityFor(dow);
     const items = [];
     while (items.length < cap && idx < flat.length) {
       const it = flat[idx];
@@ -537,7 +594,7 @@ function buildSchedule() {
       }
       items.push(it); idx++;
     }
-    days.push({ date: new Date(d), items, isRest: dow === 0, isFriday: dow === 5 });
+    days.push({ date: new Date(d), items, isRest: dow === 0, isFriday: dow === 5, brk });
     d.setDate(d.getDate() + 1);
   }
   return days;
@@ -546,6 +603,26 @@ function buildSchedule() {
 const schedule = buildSchedule();
 const scheduledDays = schedule.filter(d => d.items.length > 0);
 const targetDate = scheduledDays.length ? scheduledDays[scheduledDays.length - 1].date : SEM_END;
+
+// The semester splits in two: Course A runs from the start to targetDate,
+// Course B gets everything from the day after targetDate to Jan 13.
+const handoffDate = new Date(targetDate); handoffDate.setDate(handoffDate.getDate() + 1);
+const dayCount = (a, b) => Math.round((b - a) / 86400000) + 1;
+
+// Weekdays actually available in each half, breaks and Sundays removed —
+// the honest measure of whether the two halves are balanced.
+function workdaysBetween(from, to) {
+  let n = 0;
+  const d = new Date(from); d.setHours(0,0,0,0);
+  const end = new Date(to); end.setHours(0,0,0,0);
+  while (d <= end) {
+    if (d.getDay() !== 0 && !breakOn(d)) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+const aWorkdays = workdaysBetween(SEM_START, targetDate);
+const bWorkdays = workdaysBetween(handoffDate, SEM_END);
 
 // Item key → the day it is scheduled on.
 const dayOfKey = {};
@@ -933,7 +1010,9 @@ function renderDayView() {
   const after = document.createElement('div');
   after.className = 'panel';
   after.innerHTML = `<div class="glyph">📘</div><h2>Course B window</h2>
-    <p><b>${fmt(targetDate)} → Dec 18</b> is open. Send the Course B syllabus and it slots in right here.</p>`;
+    <p><b>${fmt(handoffDate)} → ${fmt(SEM_END)}</b> is open — ${bWorkdays} school days
+       with ${BREAKS.map(b => b.name.replace(' break','')).join(' and ')} break already taken out.<br>
+       Send the Course B syllabus and it slots in right here.</p>`;
   host.appendChild(after);
 
   updateDayHeaders();
@@ -1009,6 +1088,12 @@ document.getElementById('btn-reset').addEventListener('click', () => {
 
 document.getElementById('h-target').textContent = fmt(targetDate);
 document.getElementById('f-target').textContent = fmt(targetDate);
+
+const fmtY = d => `${MON[d.getMonth()]} ${d.getDate()}`;
+document.getElementById('sp-a').textContent  = `${fmtY(SEM_START)} – ${fmtY(targetDate)}`;
+document.getElementById('sp-ad').textContent = `${aWorkdays} school days · ${flat.length} items`;
+document.getElementById('sp-b').textContent  = `${fmtY(handoffDate)} – ${fmtY(SEM_END)}`;
+document.getElementById('sp-bd').textContent = `${bWorkdays} school days · awaiting syllabus`;
 
 refreshAll();
 
