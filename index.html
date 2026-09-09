@@ -102,7 +102,7 @@
 
   /* ── VIEW TOGGLE ────────────────────────────────────── */
   .view-toggle {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 11px; padding: 5px; margin-bottom: 22px;
   }
@@ -190,6 +190,42 @@
     color: var(--muted); margin-top: 13px; line-height: 1.5;
   }
   .tip b { color: var(--accent); font-family: var(--mono); font-size: 10.5px; letter-spacing: 1px; }
+
+  /* ── WEEK VIEW (expands into days) ──────────────────── */
+  .week-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 13px; overflow: hidden; margin-bottom: 10px; transition: border-color .2s;
+  }
+  .week-card.done { border-color: rgba(52,211,153,0.5); }
+  .week-card.current { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(79,209,197,0.18); }
+  .week-card .unit-bar { height: 3px; background: var(--track); }
+  .week-card .unit-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .4s ease; }
+  .week-body { display: none; padding: 0 14px 12px; }
+  .week-body.open { display: block; }
+
+  /* one day inside an expanded week */
+  .dayblock { border-top: 1px solid var(--border); padding: 12px 0 4px; }
+  .dayblock:first-child { border-top: none; }
+  .dayblock.is-today { background: rgba(79,209,197,0.05); margin: 0 -14px; padding: 12px 14px 4px; border-radius: 8px; }
+  .dayblock.is-rest { opacity: .55; }
+  .dayblock-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .minichip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+    padding: 3px 7px; text-align: center; min-width: 40px; flex-shrink: 0;
+  }
+  .minichip.is-today { background: var(--accent); border-color: var(--accent); }
+  .minichip.is-today .dow, .minichip.is-today .dnum { color: #04121b; }
+  .minichip .dnum { font-size: 14px; }
+  .dayblock-meta { flex: 1; min-width: 0; }
+  .dayblock-date { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .3px; }
+  .dayblock-count { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .dayblock-count.all-done { color: var(--green); }
+  .dayblock .item { padding: 9px 0; }
+  .dayblock .item:first-of-type { border-top: none; }
+  .unit-crumb {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .9px; text-transform: uppercase;
+    color: var(--accent2); filter: brightness(1.5); margin-left: auto; flex-shrink: 0;
+  }
 
   /* ── DAY VIEW ───────────────────────────────────────── */
   #day-view { display: none; }
@@ -280,10 +316,12 @@
   </div>
 
   <div class="view-toggle">
-    <button class="view-btn active" id="btn-unit" type="button">By Unit</button>
+    <button class="view-btn active" id="btn-week" type="button">By Week</button>
+    <button class="view-btn" id="btn-unit" type="button">By Unit</button>
     <button class="view-btn" id="btn-day" type="button">By Day</button>
   </div>
 
+  <div id="week-view"></div>
   <div id="unit-view"></div>
   <div id="day-view"></div>
 
@@ -534,6 +572,7 @@ function toggle(key) {
   });
   document.querySelectorAll(`[data-txt="${key}"]`).forEach(el => el.classList.toggle('struck', !!next[key]));
   updateStats();
+  updateWeekHeaders();
   updateUnitHeaders();
   updateDayHeaders();
 }
@@ -596,6 +635,152 @@ function itemLi(it, cls) {
   li.querySelector('.cb').addEventListener('click', e => { e.stopPropagation(); toggle(it.key); });
   li.querySelector('.item-body').addEventListener('click', () => toggle(it.key));
   return li;
+}
+
+// ═══ WEEK VIEW ══════════════════════════════════════════════════════
+// Calendar weeks (Mon–Sun) over the same schedule. A week is a container
+// only — the actual work is always shown broken out day by day inside it.
+function buildWeeks() {
+  const weeks = [];
+  let cur = null;
+  schedule.forEach(day => {
+    if (!cur || day.date.getDay() === 1) { cur = { days: [] }; weeks.push(cur); }
+    cur.days.push(day);
+  });
+  return weeks
+    .filter(w => w.days.some(d => d.items.length))
+    .map((w, i) => ({
+      ...w,
+      label: `WEEK ${i + 1}`,
+      start: w.days[0].date,
+      end: w.days[w.days.length - 1].date,
+      items: w.days.flatMap(d => d.items),
+    }));
+}
+
+const weeks = buildWeeks();
+
+function currentWeekIndex() {
+  const t = today0();
+  const idx = weeks.findIndex(w => {
+    const s = new Date(w.start); s.setHours(0,0,0,0);
+    const e = new Date(w.end);   e.setHours(23,59,59,999);
+    return t >= s && t <= e;
+  });
+  if (idx !== -1) return idx;
+  // Before the term starts, or after it ends: fall back to the first
+  // week that still has unfinished work.
+  return weeks.findIndex(w => w.items.some(i => !isDone(i.key)));
+}
+
+function renderWeekView() {
+  const host = document.getElementById('week-view');
+  host.innerHTML = '';
+  const cur = currentWeekIndex();
+  const t = today0();
+
+  weeks.forEach((week, wi) => {
+    const card = document.createElement('div');
+    card.className = 'week-card';
+    card.id = `wc-${wi}`;
+    card.innerHTML = `<div class="unit-bar"><span id="wb-${wi}" style="width:0%"></span></div>`;
+
+    const head = document.createElement('div');
+    head.className = 'unit-toggle-row';
+    head.innerHTML = `
+      <div class="ring" id="wr-${wi}"></div>
+      <div class="unit-toggle-info">
+        <div class="unit-toggle-name">${week.label}<span class="unit-meta" style="margin-left:8px">${fmt(week.start)} – ${fmt(week.end)}</span></div>
+        <div class="unit-toggle-sub" id="ws-${wi}"></div>
+      </div>
+      <div class="chev ${wi === cur ? 'open' : ''}" id="wch-${wi}">▾</div>`;
+    head.addEventListener('click', () => {
+      document.getElementById(`wbody-${wi}`).classList.toggle('open');
+      document.getElementById(`wch-${wi}`).classList.toggle('open');
+    });
+    card.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'week-body' + (wi === cur ? ' open' : '');
+    body.id = `wbody-${wi}`;
+
+    week.days.forEach(day => {
+      const d = new Date(day.date); d.setHours(0,0,0,0);
+      const isToday = d.getTime() === t.getTime();
+      if (!day.items.length && !isToday) return; // skip empty Sundays
+
+      const block = document.createElement('div');
+      block.className = 'dayblock' + (isToday ? ' is-today' : '') + (day.isRest ? ' is-rest' : '');
+      block.id = `wd-${wi}-${day.date.getTime()}`;
+
+      const crumb = day.items.length ? day.items[0].unitLabel : '';
+      block.innerHTML = `
+        <div class="dayblock-head">
+          <div class="minichip ${isToday ? 'is-today' : ''}">
+            <div class="dow">${DOW[day.date.getDay()]}</div>
+            <div class="dnum">${day.date.getDate()}</div>
+          </div>
+          <div class="dayblock-meta">
+            <div class="dayblock-date">${fmt(day.date)}${isToday ? ' · <span class="today-flag">TODAY</span>' : ''}</div>
+            <div class="dayblock-count" data-daycount="${day.date.getTime()}"></div>
+          </div>
+          ${crumb ? `<div class="unit-crumb">${crumb}</div>` : ''}
+        </div>`;
+
+      if (day.isRest) {
+        block.insertAdjacentHTML('beforeend',
+          '<div class="rest-note">Rest day — or clean up anything you left behind.</div>');
+      } else if (!day.items.length) {
+        block.insertAdjacentHTML('beforeend',
+          '<div class="rest-note">Buffer day — catch up or re-do what you got wrong.</div>');
+      } else {
+        const ul = document.createElement('ul');
+        ul.className = 'item-list';
+        day.items.forEach(it => ul.appendChild(itemLi(it, 'item')));
+        block.appendChild(ul);
+        if (day.isFriday) {
+          block.insertAdjacentHTML('beforeend',
+            `<div class="tip"><b>FRIDAY</b><br>Lighter load — Jumu'ah first, then the lesson.</div>`);
+        }
+      }
+      body.appendChild(block);
+    });
+
+    card.appendChild(body);
+    host.appendChild(card);
+  });
+
+  updateWeekHeaders();
+}
+
+function updateWeekHeaders() {
+  const cur = currentWeekIndex();
+  weeks.forEach((week, wi) => {
+    const bar = document.getElementById(`wb-${wi}`);
+    if (!bar) return;
+    const done = week.items.filter(i => isDone(i.key)).length;
+    const total = week.items.length;
+    const complete = done === total;
+
+    bar.style.width = (total ? (done / total) * 100 : 0) + '%';
+    const ring = document.getElementById(`wr-${wi}`);
+    ring.className = 'ring' + (complete ? ' done' : (wi === cur ? ' current' : ''));
+    ring.textContent = complete ? '✓' : '';
+    document.getElementById(`ws-${wi}`).textContent =
+      `${done}/${total} done` + (wi === cur && !complete ? '  ·  THIS WEEK' : '');
+    document.getElementById(`wc-${wi}`).className =
+      'week-card' + (complete ? ' done' : (wi === cur ? ' current' : ''));
+
+    // per-day counts inside the expanded week
+    week.days.forEach(day => {
+      const el = document.querySelector(`#wbody-${wi} [data-daycount="${day.date.getTime()}"]`);
+      if (!el) return;
+      if (!day.items.length) { el.textContent = day.isRest ? 'rest' : 'buffer'; return; }
+      const dDone = day.items.filter(i => isDone(i.key)).length;
+      el.textContent = `${dDone}/${day.items.length} done`;
+      el.classList.toggle('all-done', dDone === day.items.length);
+    });
+  });
 }
 
 // ═══ UNIT VIEW ══════════════════════════════════════════════════════
@@ -806,16 +991,18 @@ function updateDayHeaders() {
 }
 
 // ═══ WIRING ═════════════════════════════════════════════════════════
-function refreshAll() { renderUnitView(); renderDayView(); updateStats(); }
+function refreshAll() { renderWeekView(); renderUnitView(); renderDayView(); updateStats(); }
 
+const VIEWS = ['week', 'unit', 'day'];
 function switchView(v) {
-  document.getElementById('unit-view').style.display = v === 'unit' ? 'block' : 'none';
-  document.getElementById('day-view').style.display  = v === 'day'  ? 'block' : 'none';
-  document.getElementById('btn-unit').classList.toggle('active', v === 'unit');
-  document.getElementById('btn-day').classList.toggle('active', v === 'day');
+  VIEWS.forEach(name => {
+    document.getElementById(`${name}-view`).style.display = name === v ? 'block' : 'none';
+    document.getElementById(`btn-${name}`).classList.toggle('active', name === v);
+  });
+  try { localStorage.setItem('amp_calc_view', v); } catch {}
 }
-document.getElementById('btn-unit').addEventListener('click', () => switchView('unit'));
-document.getElementById('btn-day').addEventListener('click', () => switchView('day'));
+VIEWS.forEach(name =>
+  document.getElementById(`btn-${name}`).addEventListener('click', () => switchView(name)));
 document.getElementById('btn-reset').addEventListener('click', () => {
   if (confirm('Reset all progress? This clears it on every device.')) { saveState({}); refreshAll(); }
 });
@@ -824,6 +1011,10 @@ document.getElementById('h-target').textContent = fmt(targetDate);
 document.getElementById('f-target').textContent = fmt(targetDate);
 
 refreshAll();
+
+let savedView = 'week';
+try { const v = localStorage.getItem('amp_calc_view'); if (VIEWS.includes(v)) savedView = v; } catch {}
+switchView(savedView);
 </script>
 </body>
 </html>

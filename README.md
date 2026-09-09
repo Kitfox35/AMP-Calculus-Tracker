@@ -9,8 +9,12 @@ instead of two, by running Course A at double the normal pace.
 
 ## Views
 
+- **By Week** (default) — the 9 weeks of Course A. Tapping a week expands it into each
+  individual day of that week, with that day's assigned work and its own done count.
 - **By Unit** — the syllabus as written, grouped into Units 1–6 with the assigned practice problems.
-- **By Day** — the same items dealt out onto actual calendar dates, with today highlighted.
+- **By Day** — one card per calendar day, today highlighted.
+
+The current week and today are expanded automatically, and the chosen view is remembered.
 
 ## Progress sync
 
