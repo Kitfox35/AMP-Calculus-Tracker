@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<title>AMP Calculus — Double Pace Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b1020;
+    --surface: #121831;
+    --card: #161d3a;
+    --card-hi: #1c2447;
+    --border: #26304f;
+    --accent: #4fd1c5;
+    --accent2: #7c5cff;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --text: #e6ebf7;
+    --muted: #8b95b5;
+    --track: #1a2140;
+    --sans: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(900px 500px at 15% -8%, rgba(124,92,255,0.16), transparent 60%),
+      radial-gradient(800px 420px at 90% 0%, rgba(79,209,197,0.10), transparent 55%);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 14px calc(70px + env(safe-area-inset-bottom)); }
+
+  /* ── HEADER ─────────────────────────────────────────── */
+  .header { text-align: center; padding: 34px 0 22px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+  }
+  h1 { font-size: clamp(23px, 5.4vw, 38px); font-weight: 700; letter-spacing: -0.6px; line-height: 1.12; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 12px; letter-spacing: 0.4px; }
+  .sub b { color: var(--text); }
+
+  /* ── STICKY PROGRESS ────────────────────────────────── */
+  .sticky-bar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(11,16,32,0.86);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 11px 14px calc(11px + env(safe-area-inset-top));
+    margin: 0 -14px 20px;
+  }
+  .sticky-inner { max-width: 832px; margin: 0 auto; }
+  .sticky-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .sticky-title { font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; color: var(--muted); text-transform: uppercase; }
+  .sticky-pct { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--accent); margin-left: auto; }
+  .sticky-count { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  .bar-track { position: relative; background: var(--track); border-radius: 99px; height: 9px; overflow: visible; }
+  .bar-fill {
+    height: 9px; border-radius: 99px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width .45s cubic-bezier(.4,0,.2,1);
+    box-shadow: 0 0 14px rgba(79,209,197,0.4);
+  }
+  .pace-marker {
+    position: absolute; top: -4px; width: 2px; height: 17px;
+    background: var(--amber); border-radius: 2px; transition: left .45s ease;
+  }
+  .pace-marker::after {
+    content: 'PACE'; position: absolute; top: 19px; left: 50%; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.8px; color: var(--amber);
+  }
+  .pace-note { font-family: var(--mono); font-size: 11px; margin-top: 15px; text-align: right; }
+  .pace-note.ahead { color: var(--green); }
+  .pace-note.behind { color: var(--amber); }
+  .pace-note.onpace { color: var(--muted); }
+
+  /* ── STATS ──────────────────────────────────────────── */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-bottom: 22px; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 13px 8px; text-align: center;
+  }
+  .stat-num { font-family: var(--mono); font-size: clamp(17px, 4.2vw, 24px); font-weight: 700; color: var(--accent); line-height: 1.1; }
+  .stat-label { font-size: 9.5px; color: var(--muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.7px; }
+  @media (max-width: 460px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ── VIEW TOGGLE ────────────────────────────────────── */
+  .view-toggle {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 11px; padding: 5px; margin-bottom: 22px;
+  }
+  .view-btn {
+    background: transparent; border: none; color: var(--muted);
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    padding: 9px 12px; border-radius: 8px; cursor: pointer; transition: all .18s;
+  }
+  .view-btn.active { background: var(--accent); color: #04121b; }
+
+  /* ── UNIT ───────────────────────────────────────────── */
+  .unit-block { margin-bottom: 26px; }
+  .unit-head { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; flex-wrap: wrap; }
+  .unit-badge {
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    color: #060b18; font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+    padding: 4px 9px; border-radius: 5px; letter-spacing: 1px; white-space: nowrap;
+  }
+  .unit-title { font-size: 15px; font-weight: 600; }
+  .unit-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  .unit-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 13px; overflow: hidden; transition: border-color .2s;
+  }
+  .unit-card.done { border-color: rgba(52,211,153,0.5); }
+  .unit-card.current { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(79,209,197,0.18); }
+
+  .unit-bar { height: 3px; background: var(--track); }
+  .unit-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .4s ease; }
+
+  .unit-toggle-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; cursor: pointer; user-select: none;
+  }
+  .ring {
+    width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; flex-shrink: 0; transition: all .2s; font-weight: 700;
+  }
+  .ring.done { background: var(--green); border-color: var(--green); color: #04211a; }
+  .ring.current { border-color: var(--accent); background: rgba(79,209,197,0.12); }
+  .unit-toggle-info { flex: 1; min-width: 0; }
+  .unit-toggle-name { font-size: 13.5px; font-weight: 600; }
+  .unit-toggle-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .chev { color: var(--muted); font-size: 15px; transition: transform .22s; flex-shrink: 0; }
+  .chev.open { transform: rotate(180deg); }
+
+  .unit-body { display: none; padding: 0 16px 14px; }
+  .unit-body.open { display: block; }
+
+  /* ── ITEMS ──────────────────────────────────────────── */
+  .item-list { list-style: none; }
+  .item {
+    display: flex; align-items: flex-start; gap: 11px;
+    padding: 11px 0; border-top: 1px solid var(--border);
+  }
+  .cb {
+    width: 19px; height: 19px; border: 2px solid var(--border); border-radius: 5px;
+    flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; cursor: pointer; transition: all .15s; background: var(--surface);
+  }
+  .cb:active { transform: scale(0.9); }
+  .cb.checked { background: var(--green); border-color: var(--green); color: #04211a; }
+  .item-body { flex: 1; min-width: 0; cursor: pointer; }
+  .item-name { font-size: 13.5px; font-weight: 500; }
+  .item-name.struck { text-decoration: line-through; color: var(--muted); text-decoration-color: var(--green); }
+  .item-work {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-top: 4px; line-height: 1.5; word-break: break-word;
+  }
+  .item-work.struck { opacity: .5; }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.8px; padding: 2px 6px; border-radius: 4px; margin-right: 7px;
+    vertical-align: 1.5px; text-transform: uppercase;
+  }
+  .tag.quiz { background: rgba(251,191,36,0.16); color: var(--amber); }
+  .tag.test { background: rgba(248,113,113,0.16); color: var(--red); }
+  .tag.review { background: rgba(124,92,255,0.18); color: #a894ff; }
+
+  .tip {
+    background: rgba(79,209,197,0.06); border-left: 2px solid var(--accent);
+    border-radius: 0 7px 7px 0; padding: 10px 13px; font-size: 12.5px;
+    color: var(--muted); margin-top: 13px; line-height: 1.5;
+  }
+  .tip b { color: var(--accent); font-family: var(--mono); font-size: 10.5px; letter-spacing: 1px; }
+
+  /* ── DAY VIEW ───────────────────────────────────────── */
+  #day-view { display: none; }
+  .day-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 9px; overflow: hidden;
+  }
+  .day-card.today { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(79,209,197,0.2); }
+  .day-card.done { border-color: rgba(52,211,153,0.45); }
+  .day-card.past { opacity: .55; }
+  .day-card.rest { border-style: dashed; opacity: .6; }
+
+  .day-head { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; user-select: none; }
+  .datechip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+    padding: 6px 8px; text-align: center; min-width: 48px; flex-shrink: 0;
+  }
+  .datechip.is-today { background: var(--accent); border-color: var(--accent); }
+  .datechip.is-today .dow, .datechip.is-today .dnum { color: #04121b; }
+  .dow { font-family: var(--mono); font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .dnum { font-family: var(--mono); font-size: 18px; font-weight: 700; line-height: 1.1; margin-top: 1px; }
+  .day-info { flex: 1; min-width: 0; }
+  .day-title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .day-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .today-flag { color: var(--accent); font-weight: 700; }
+  .day-body { display: none; padding: 0 14px 12px; }
+  .day-body.open { display: block; }
+  .rest-note { font-size: 12.5px; color: var(--muted); font-style: italic; padding: 6px 0; }
+
+  .section-label {
+    font-family: var(--mono); font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: 1.3px; color: var(--muted); padding: 9px 0 2px;
+  }
+
+  /* ── FOOTER PANELS ──────────────────────────────────── */
+  .panel {
+    margin-top: 30px; border: 1px solid var(--border); border-radius: 14px;
+    padding: 24px 20px; text-align: center; background: var(--surface);
+  }
+  .panel.finish { border-color: var(--accent); background: rgba(79,209,197,0.05); }
+  .panel .glyph { font-size: 30px; }
+  .panel h2 { font-size: 17px; font-weight: 700; margin: 9px 0 7px; }
+  .panel p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .panel code { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+
+  .footer-row { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+  .sync { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+  .sync .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); margin-right: 5px; vertical-align: 1px; }
+  .sync.live .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .sync.err .dot { background: var(--red); }
+  .reset {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font-family: var(--sans); font-size: 11.5px; padding: 7px 14px;
+    border-radius: 7px; cursor: pointer; margin-left: auto; transition: all .2s;
+  }
+  .reset:hover { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="sticky-bar">
+    <div class="sticky-inner">
+      <div class="sticky-row">
+        <span class="sticky-title">Course A</span>
+        <span class="sticky-count" id="s-count">0 / 0</span>
+        <span class="sticky-pct" id="s-pct">0%</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" id="s-bar" style="width:0%"></div>
+        <div class="pace-marker" id="s-pace" style="left:0%"></div>
+      </div>
+      <div class="pace-note onpace" id="s-note">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="eyebrow">Double Pace · Fall 2026</div>
+    <h1>AMP Calculus <em>I</em><br>Course A &amp; B in One Semester</h1>
+    <div class="sub">Sep 8 → Dec 18 &nbsp;·&nbsp; Course A target <b id="h-target">—</b></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-num" id="k-done">0</div><div class="stat-label">Done</div></div>
+    <div class="stat"><div class="stat-num" id="k-left">0</div><div class="stat-label">Remaining</div></div>
+    <div class="stat"><div class="stat-num" id="k-today">0</div><div class="stat-label">Due Today</div></div>
+    <div class="stat"><div class="stat-num" id="k-days">0</div><div class="stat-label">Days to Target</div></div>
+  </div>
+
+  <div class="view-toggle">
+    <button class="view-btn active" id="btn-unit" type="button">By Unit</button>
+    <button class="view-btn" id="btn-day" type="button">By Day</button>
+  </div>
+
+  <div id="unit-view"></div>
+  <div id="day-view"></div>
+
+  <div class="panel finish">
+    <div class="glyph">∫</div>
+    <h2>Course A complete → Course B begins</h2>
+    <p>Finishing Course A by <b id="f-target">—</b> leaves the rest of the semester for Course B.<br>
+       Drop the Course B syllabus into the <code>units</code> array to extend this tracker.</p>
+  </div>
+
+  <div class="footer-row">
+    <span class="sync" id="sync"><span class="dot"></span><span id="sync-text">connecting…</span></span>
+    <button class="reset" id="btn-reset" type="button">Reset progress</button>
+  </div>
+
+</div>
+
+<script type="module">
+// ═══ FIREBASE SYNC ══════════════════════════════════════════════════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDbgCxr9h3PQR_2kcxISAkk3qCFV4iN6aU",
+  authDomain: "lone-star-tracker.firebaseapp.com",
+  projectId: "lone-star-tracker",
+  storageBucket: "lone-star-tracker.firebasestorage.app",
+  messagingSenderId: "1053930847791",
+  appId: "1:1053930847791:web:d750572b1fbda8128950da"
+};
+
+const db = getFirestore(initializeApp(firebaseConfig));
+const stateDoc = doc(db, "trackers", "amp_calc_a_state");
+const LOCAL_KEY = "amp_calc_a_state";
+
+// Local mirror so the page renders instantly and still works offline;
+// Firestore is the source of truth once the first snapshot lands.
+let cachedState = (() => {
+  try { return JSON.parse(localStorage.getItem(LOCAL_KEY)) || {}; } catch { return {}; }
+})();
+let loadedOnce = false;
+
+function setSync(cls, text) {
+  const el = document.getElementById('sync');
+  el.className = 'sync ' + cls;
+  document.getElementById('sync-text').textContent = text;
+}
+
+onSnapshot(stateDoc, (snap) => {
+  const incoming = snap.exists() ? (snap.data().state || {}) : {};
+  const changed = JSON.stringify(incoming) !== JSON.stringify(cachedState);
+  cachedState = incoming;
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(incoming)); } catch {}
+  setSync('live', 'synced');
+  // Only rebuild when the change came from another device — our own clicks
+  // already patch the DOM, and a rebuild would collapse open sections.
+  if (!loadedOnce || changed) { loadedOnce = true; refreshAll(); }
+}, (err) => {
+  console.error('Sync error:', err);
+  setSync('err', 'offline — saved on this device');
+});
+
+function saveState(s) {
+  cachedState = s;
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(s)); } catch {}
+  setDoc(stateDoc, { state: s, updated: Date.now() })
+    .then(() => setSync('live', 'synced'))
+    .catch(err => { console.error('Save failed:', err); setSync('err', 'offline — saved on this device'); });
+}
+
+// ═══ SYLLABUS — AMP CALCULUS I, COURSE A ════════════════════════════
+// type: 'lesson' | 'quiz' | 'test' | 'review'
+const units = [
+  {
+    label: "PREP", title: "Before Unit 1",
+    tip: "Get the calculator set up before Unit 1 starts — it costs you nothing now and saves you on every timed quiz later.",
+    items: [
+      { type: "lesson", name: "Review Calculator Tips — PLEASE DO THIS", work: "5 videos listed on the webpage in Unit 1" },
+    ]
+  },
+  {
+    label: "UNIT 1", title: "Limits & the Derivative",
+    tip: "Two lessons a day. Limits look easy and then continuity punishes you — do Continuity part 1 and part 2 exactly like the class notes.",
+    items: [
+      { type: "lesson", name: "The Limit of a Function (2.2)", work: "Pg. 96 #4-9, 15-18, 23-26, 29-32" },
+      { type: "lesson", name: "Calculating Limits Using the Limit Laws (2.3)", work: "Pg. 106 #1-3, 11-13, 15, 17, 18, 21, 22, 23, 26, 28, 30, 37, 38, 41-46, 48-50" },
+      { type: "quiz", name: "Quiz on 2.2, 2.3", work: "" },
+      { type: "lesson", name: "Continuity (2.5): part 1", work: "Pg. 21 #31-34; Pg. 127 #5-8, 25-28, 31, 32, and anything left from #1-11 in the notes" },
+      { type: "lesson", name: "Continuity (2.5): part 2", work: "Pg. 128 — do ALL problems like our notes: #17-22, 39-43, 45, 46" },
+      { type: "lesson", name: "Derivatives and Rates of Change (2.1 / 2.7): part 1", work: "Pg. 86 #1 ab, 3, 5, 7a; Pg. 150 #43 ab, 44 ab, 45, 47, 48, 50" },
+      { type: "lesson", name: "Derivatives and Rates of Change (2.1 / 2.7): part 2", work: "Pg. 150 #5, 7, 8, 18-20" },
+      { type: "quiz", name: "Quiz on 2.5, 2.7", work: "" },
+      { type: "lesson", name: "The Derivative as a Function (2.8)", work: "Pg. 162 #1, 2 b-h (state positive, negative, or zero), 3-12" },
+      { type: "test", name: "Test — all Unit 1 lessons and practice", work: "" },
+    ]
+  },
+  {
+    label: "UNIT 2", title: "Differentiation Rules",
+    tip: "The heaviest run of practice sets in Course A. The OneNote extras are not optional — they are where the quiz problems come from.",
+    items: [
+      { type: "lesson", name: "Differentiation Rules (3.1) — set 1", work: "Pg. 73 #1; Pg. 181 #3-37 odd (omit 27)" },
+      { type: "lesson", name: "Differentiation Rules (3.1) — set 2", work: "Pg. 182 (no graphing required) #34-38 even, 43-47, 48 ab, 51-58" },
+      { type: "lesson", name: "Differentiation Rules (3.1) — set 3", work: "5 extras in the OneNote file; Pg. 183 #59, 67-69 (sketching in class), 71, 75" },
+      { type: "lesson", name: "Product and Quotient Rules (3.2)", work: "5 extras in the OneNote file; Pg. 189 #3-25 odd, 27-34, 41, 43-50, 54" },
+      { type: "quiz", name: "Quiz on 3.1, 3.2", work: "" },
+      { type: "lesson", name: "Derivatives of Trig Functions (3.3)", work: "Pg. 197 #1-15 odd, 21-24, 33, 34, 35; Pg. 43 #50, 51" },
+      { type: "quiz", name: "Quiz on 3.1-3.3", work: "" },
+      { type: "lesson", name: "Chain Rule Intro (3.4) — set 1", work: "Pg. 205 #1-47 odd" },
+      { type: "lesson", name: "Chain Rule Intro (3.4) — set 2", work: "4 extras in the OneNote file; Pg. 205 #51-54, 55a, 59, 60-67, 79, 81, 83 (no graphing required)" },
+      { type: "quiz", name: "Quiz on 3.1-3.4", work: "" },
+      { type: "lesson", name: "Derivatives of Logarithmic Functions (3.6)", work: "Pg. 223 #3-23 odd, 27, 28, 31-34" },
+      { type: "lesson", name: "Extras + quick review on Translations", work: "3 extras in the OneNote file and the Translation Worksheet" },
+      { type: "test", name: "Test — all Unit 2 lessons and practice", work: "" },
+    ]
+  },
+  {
+    label: "UNIT 3", title: "Implicit Differentiation & Related Rates",
+    tip: "Related Rates is three lessons and two tests' worth of weight. Draw the picture every single time — that is the whole skill.",
+    items: [
+      { type: "review", name: "Precalc Review: Inverse Functions / logs (1.6)", work: "Pg. 70 #5-14 (just determine one-to-one), 15, 17, 21-23, 25, 35-41, 51, 53" },
+      { type: "lesson", name: "Derivatives of Trig Inverse Functions (3.5)", work: "Pg. 216 #49-58; 4 extras in the OneNote file" },
+      { type: "lesson", name: "Slopes on inverse function tangents", work: "Handout" },
+      { type: "lesson", name: "Implicit Differentiation (3.5) — 1st practice", work: "Pg. 215 #5-11, 13, 14, 18, 21, 25, 27, 29, 31" },
+      { type: "lesson", name: "Implicit Differentiation (3.5) — 2nd practice", work: "Pg. 215 #12, 15, 16, 19, 22, 35, 36, 37; Pg. 223 #43, 45, 47, 49, 51, 52" },
+      { type: "quiz", name: "Quiz on 3.5 (implicit = 1st practice), 1.6, inverse slope handout", work: "" },
+      { type: "lesson", name: "Rates of Change in Natural and Social Sciences (3.7)", work: "Pg. 233 #1, 2, 4, 5, 7-10" },
+      { type: "quiz", name: "Quiz on 3.7 and 3.5 (implicit = 2nd practice)", work: "" },
+      { type: "lesson", name: "Exponential Growth and Decay (3.8)", work: "Pg. 242 #1-4, 8 a-c, 9-11" },
+      { type: "test", name: "Test Part 1 — 3.5, 3.7, 3.8", work: "" },
+      { type: "lesson", name: "Related Rates (3.9) — Pythagorean Thm and formulas", work: "Worksheet #1, 2, 6-8, 10, 11, 13-16, 18, 20, 21; Book #11, 12, 16, 18, 19" },
+      { type: "lesson", name: "Related Rates (3.9) — time problems and cones", work: "Worksheet #3-5, 9, 12, 17, 19; Book Pg. 248 #14, 15, 17, 27" },
+      { type: "lesson", name: "Related Rates (3.9) — theta problems and similar triangles", work: "Worksheet #22, 23; Book Pg. 248 #28, 39, 40" },
+      { type: "lesson", name: "Linear Approximations and Differentials (3.10)", work: "Handout / Pg. 255 #11, 12, 15-18" },
+      { type: "test", name: "Test Part 2 — 3.9 only", work: "" },
+    ]
+  },
+  {
+    label: "UNIT 4", title: "Extrema, MVT & L'Hospital",
+    tip: "Short unit — use the lighter days to go back and re-do the Related Rates worksheet you got wrong.",
+    items: [
+      { type: "lesson", name: "Max / Min Values (4.1)", work: "Pg. 280 #3-13, 15-28, 47-59 odd, 60" },
+      { type: "lesson", name: "Mean Value Theorem (4.2)", work: "Pg. 289 #5-16, 23, 25" },
+      { type: "quiz", name: "Quiz on 4.1, 4.2", work: "" },
+      { type: "lesson", name: "Indeterminate Forms and L'Hospital's Rule (4.4)", work: "Pg. 307 #7-17 odd, 18-20, 21, 24, 25, 29, 30, 31-39 odd" },
+      { type: "test", name: "Test on 4.1, 4.2 and 4.4", work: "" },
+    ]
+  },
+  {
+    label: "UNIT 5", title: "Curve Sketching & Optimization",
+    tip: "Five quizzes and a test in one unit. Number lines are the load-bearing skill — if the sign chart is right, the sketch is automatic.",
+    items: [
+      { type: "lesson", name: "Basic Graphing Rules w/ Derivatives (4.3-4.5) — worksheet", work: "Worksheet" },
+      { type: "lesson", name: "Basic Graphing Rules w/ Derivatives (4.3-4.5) — book", work: "Pg. 298 #24-29; Pg. 297 #1-2, 5-8, 31, 32" },
+      { type: "quiz", name: "Quiz on Basic Graphing Rules w/ Derivatives", work: "" },
+      { type: "lesson", name: "Number Line Practice", work: "Handout" },
+      { type: "lesson", name: "Curve Sketching w/ Derivatives (4.3, 4.5, 4.6) — Polynomial", work: "Handout" },
+      { type: "quiz", name: "Quiz on sketching polynomials using derivatives / number lines", work: "" },
+      { type: "lesson", name: "Limits at Infinity / Horizontal Asymptotes (2.6)", work: "Pg. 140 #3-10, 15-21, 29, 31, 32" },
+      { type: "lesson", name: "Curve Sketching w/ Derivatives (4.3, 4.5, 4.6) — Rational", work: "Handout" },
+      { type: "quiz", name: "Quiz on sketching rationals using limits, 2.6", work: "" },
+      { type: "lesson", name: "Curve Sketching w/ Derivatives — Square Roots / Exponentials", work: "Handout" },
+      { type: "lesson", name: "Curve Sketching w/ Derivatives — Fractional Exponents", work: "Handout" },
+      { type: "test", name: "Test on 4.3-4.5", work: "" },
+      { type: "lesson", name: "Optimization (4.7) — Group 1", work: "Pg. 331 #3, 4, 7, 11-15, 17, 19, 20, 28, 37, 54" },
+      { type: "lesson", name: "Optimization (4.7) — Group 2 (calculator for derivatives)", work: "Pg. 331 #22, 33, 34, 40" },
+      { type: "quiz", name: "Quiz on 4.7 only", work: "" },
+    ]
+  },
+  {
+    label: "UNIT 6", title: "Course Review & Exam",
+    tip: "Do the review as a closed-book timed run first, then go back and fix only what you missed.",
+    items: [
+      { type: "review", name: "Course Review", work: "Work back through every unit test and quiz you got wrong" },
+      { type: "test", name: "AMP Calculus I Course A Review Exam", work: "" },
+    ]
+  },
+];
+
+// ═══ SCHEDULE ═══════════════════════════════════════════════════════
+const SEM_START = new Date(2026, 8, 8);   // Sep 8 2026
+const SEM_END   = new Date(2026, 11, 18); // Dec 18 2026
+
+// Double pace: 2 items per weekday instead of the normal 1, so Course A
+// clears in roughly half a semester and Course B gets the other half.
+// Friday is lighter (Jumu'ah first), Sunday is off. Quizzes and tests get
+// a day to themselves rather than sharing one with new material.
+function capacityFor(dow) {
+  if (dow === 0) return 0;  // Sunday
+  if (dow === 5) return 1;  // Friday
+  return 2;
+}
+
+const flat = [];
+units.forEach((u, ui) => u.items.forEach((it, ii) => {
+  flat.push({ key: `${ui}-${ii}`, ui, ii, ...it, unitLabel: u.label, unitTitle: u.title });
+}));
+
+function buildSchedule() {
+  const days = [];
+  let idx = 0;
+  const d = new Date(SEM_START);
+  while (d <= SEM_END && idx < flat.length) {
+    const dow = d.getDay();
+    const cap = capacityFor(dow);
+    const items = [];
+    while (items.length < cap && idx < flat.length) {
+      const it = flat[idx];
+      const isAssessment = it.type === 'quiz' || it.type === 'test';
+      if (isAssessment) {
+        if (items.length === 0) { items.push(it); idx++; }
+        break; // an assessment never shares a day with other work
+      }
+      items.push(it); idx++;
+    }
+    days.push({ date: new Date(d), items, isRest: dow === 0, isFriday: dow === 5 });
+    d.setDate(d.getDate() + 1);
+  }
+  return days;
+}
+
+const schedule = buildSchedule();
+const scheduledDays = schedule.filter(d => d.items.length > 0);
+const targetDate = scheduledDays.length ? scheduledDays[scheduledDays.length - 1].date : SEM_END;
+
+// Item key → the day it is scheduled on.
+const dayOfKey = {};
+schedule.forEach(day => day.items.forEach(it => { dayOfKey[it.key] = day.date; }));
+
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmt = d => `${MON[d.getMonth()]} ${d.getDate()}`;
+
+function today0() { const t = new Date(); t.setHours(0,0,0,0); return t; }
+
+// ═══ STATE HELPERS ══════════════════════════════════════════════════
+const isDone = k => !!cachedState[k];
+
+function toggle(key) {
+  const next = { ...cachedState };
+  if (next[key]) delete next[key]; else next[key] = true;
+  saveState(next);
+  // Patch every rendered copy of this item in place (unit view + day view)
+  // so open accordions stay open.
+  document.querySelectorAll(`.cb[data-key="${key}"]`).forEach(cb => {
+    cb.classList.toggle('checked', !!next[key]);
+    cb.textContent = next[key] ? '✓' : '';
+  });
+  document.querySelectorAll(`[data-txt="${key}"]`).forEach(el => el.classList.toggle('struck', !!next[key]));
+  updateStats();
+  updateUnitHeaders();
+  updateDayHeaders();
+}
+
+// ═══ STATS ══════════════════════════════════════════════════════════
+function expectedByToday() {
+  const t = today0();
+  let n = 0;
+  schedule.forEach(day => { const d = new Date(day.date); d.setHours(0,0,0,0); if (d <= t) n += day.items.length; });
+  return n;
+}
+
+function updateStats() {
+  const done = flat.filter(f => isDone(f.key)).length;
+  const total = flat.length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+
+  document.getElementById('s-count').textContent = `${done} / ${total}`;
+  document.getElementById('s-pct').textContent = pct + '%';
+  document.getElementById('s-bar').style.width = pct + '%';
+
+  const expected = Math.min(expectedByToday(), total);
+  const pacePct = total ? (expected / total) * 100 : 0;
+  document.getElementById('s-pace').style.left = pacePct + '%';
+
+  const diff = done - expected;
+  const note = document.getElementById('s-note');
+  if (diff > 0)       { note.className = 'pace-note ahead';  note.textContent = `${diff} ahead of schedule`; }
+  else if (diff < 0)  { note.className = 'pace-note behind'; note.textContent = `${-diff} behind schedule`; }
+  else                { note.className = 'pace-note onpace'; note.textContent = 'exactly on pace'; }
+
+  const t = today0();
+  const todayDay = schedule.find(d => { const x = new Date(d.date); x.setHours(0,0,0,0); return x.getTime() === t.getTime(); });
+  const dueToday = todayDay ? todayDay.items.filter(i => !isDone(i.key)).length : 0;
+  const daysLeft = Math.max(0, Math.ceil((targetDate - t) / 86400000));
+
+  document.getElementById('k-done').textContent = done;
+  document.getElementById('k-left').textContent = total - done;
+  document.getElementById('k-today').textContent = dueToday;
+  document.getElementById('k-days').textContent = daysLeft;
+}
+
+function tagHtml(type) {
+  if (type === 'quiz')   return '<span class="tag quiz">Quiz</span>';
+  if (type === 'test')   return '<span class="tag test">Test</span>';
+  if (type === 'review') return '<span class="tag review">Review</span>';
+  return '';
+}
+
+function itemLi(it, cls) {
+  const done = isDone(it.key);
+  const li = document.createElement('li');
+  li.className = cls;
+  li.innerHTML = `
+    <div class="cb ${done ? 'checked' : ''}" data-key="${it.key}">${done ? '✓' : ''}</div>
+    <div class="item-body">
+      <div class="item-name ${done ? 'struck' : ''}" data-txt="${it.key}">${tagHtml(it.type)}${it.name}</div>
+      ${it.work ? `<div class="item-work ${done ? 'struck' : ''}" data-txt="${it.key}">${it.work}</div>` : ''}
+    </div>`;
+  li.querySelector('.cb').addEventListener('click', e => { e.stopPropagation(); toggle(it.key); });
+  li.querySelector('.item-body').addEventListener('click', () => toggle(it.key));
+  return li;
+}
+
+// ═══ UNIT VIEW ══════════════════════════════════════════════════════
+function currentUnitIndex() {
+  for (let i = 0; i < units.length; i++) {
+    if (units[i].items.some((_, ii) => !isDone(`${i}-${ii}`))) return i;
+  }
+  return -1;
+}
+
+function renderUnitView() {
+  const host = document.getElementById('unit-view');
+  host.innerHTML = '';
+  const cur = currentUnitIndex();
+
+  units.forEach((u, ui) => {
+    const keys = u.items.map((_, ii) => `${ui}-${ii}`);
+    const first = dayOfKey[keys[0]], last = dayOfKey[keys[keys.length - 1]];
+    const range = first && last ? `${fmt(first)} – ${fmt(last)}` : '';
+
+    const block = document.createElement('div');
+    block.className = 'unit-block';
+    block.innerHTML = `<div class="unit-head">
+      <span class="unit-badge">${u.label}</span>
+      <span class="unit-title">${u.title}</span>
+      <span class="unit-meta">${range}</span></div>`;
+
+    const card = document.createElement('div');
+    card.className = 'unit-card';
+    card.id = `uc-${ui}`;
+
+    card.innerHTML = `<div class="unit-bar"><span id="ub-${ui}" style="width:0%"></span></div>`;
+
+    const head = document.createElement('div');
+    head.className = 'unit-toggle-row';
+    head.innerHTML = `
+      <div class="ring" id="ur-${ui}"></div>
+      <div class="unit-toggle-info">
+        <div class="unit-toggle-name">${u.title}</div>
+        <div class="unit-toggle-sub" id="us-${ui}"></div>
+      </div>
+      <div class="chev ${ui === cur ? 'open' : ''}" id="uch-${ui}">▾</div>`;
+    head.addEventListener('click', () => {
+      document.getElementById(`ubody-${ui}`).classList.toggle('open');
+      document.getElementById(`uch-${ui}`).classList.toggle('open');
+    });
+    card.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'unit-body' + (ui === cur ? ' open' : '');
+    body.id = `ubody-${ui}`;
+
+    const ul = document.createElement('ul');
+    ul.className = 'item-list';
+    u.items.forEach((it, ii) => ul.appendChild(itemLi(flat.find(f => f.key === `${ui}-${ii}`), 'item')));
+    body.appendChild(ul);
+
+    if (u.tip) {
+      const tip = document.createElement('div');
+      tip.className = 'tip';
+      tip.innerHTML = `<b>NOTE</b><br>${u.tip}`;
+      body.appendChild(tip);
+    }
+
+    card.appendChild(body);
+    block.appendChild(card);
+    host.appendChild(block);
+  });
+
+  updateUnitHeaders();
+}
+
+function updateUnitHeaders() {
+  const cur = currentUnitIndex();
+  units.forEach((u, ui) => {
+    const done = u.items.filter((_, ii) => isDone(`${ui}-${ii}`)).length;
+    const total = u.items.length;
+    const complete = done === total;
+    const bar = document.getElementById(`ub-${ui}`);
+    const ring = document.getElementById(`ur-${ui}`);
+    const sub = document.getElementById(`us-${ui}`);
+    const card = document.getElementById(`uc-${ui}`);
+    if (!bar) return;
+    bar.style.width = (total ? (done / total) * 100 : 0) + '%';
+    ring.className = 'ring' + (complete ? ' done' : (ui === cur ? ' current' : ''));
+    ring.textContent = complete ? '✓' : '';
+    sub.textContent = `${done}/${total} done` + (ui === cur && !complete ? '  ·  IN PROGRESS' : '');
+    card.className = 'unit-card' + (complete ? ' done' : (ui === cur ? ' current' : ''));
+  });
+}
+
+// ═══ DAY VIEW ═══════════════════════════════════════════════════════
+function renderDayView() {
+  const host = document.getElementById('day-view');
+  host.innerHTML = '';
+  const t = today0();
+  let lastUnit = '';
+
+  schedule.forEach((day, di) => {
+    const d = new Date(day.date); d.setHours(0,0,0,0);
+    const isToday = d.getTime() === t.getTime();
+    const isPast = d < t;
+
+    if (day.items.length) {
+      const ul = day.items[0].unitLabel;
+      if (ul !== lastUnit) {
+        lastUnit = ul;
+        const h = document.createElement('div');
+        h.className = 'unit-head';
+        h.style.marginTop = '22px';
+        h.innerHTML = `<span class="unit-badge">${ul}</span><span class="unit-title">${day.items[0].unitTitle}</span>`;
+        host.appendChild(h);
+      }
+    }
+    if (day.isRest && !isToday) return; // don't pad the list with every Sunday
+
+    const card = document.createElement('div');
+    card.id = `dc-${di}`;
+    card.appendChild(dayHead(day, di, isToday, isPast));
+
+    const body = document.createElement('div');
+    body.className = 'day-body' + (isToday ? ' open' : '');
+    body.id = `dbody-${di}`;
+
+    if (day.isRest) {
+      body.innerHTML = '<div class="rest-note">Sunday — rest, or clean up anything you left behind this week.</div>';
+    } else if (!day.items.length) {
+      body.innerHTML = '<div class="rest-note">Buffer day — catch up or re-do the problems you got wrong.</div>';
+    } else {
+      const lbl = document.createElement('div');
+      lbl.className = 'section-label';
+      lbl.textContent = isToday ? "Today's work" : 'Scheduled';
+      body.appendChild(lbl);
+      const ul = document.createElement('ul');
+      ul.className = 'item-list';
+      day.items.forEach(it => ul.appendChild(itemLi(it, 'item')));
+      body.appendChild(ul);
+      if (day.isFriday) {
+        const f = document.createElement('div');
+        f.className = 'tip';
+        f.innerHTML = `<b>FRIDAY</b><br>Lighter load — Jumu'ah first, then the lesson.`;
+        body.appendChild(f);
+      }
+    }
+
+    card.appendChild(body);
+    host.appendChild(card);
+  });
+
+  const after = document.createElement('div');
+  after.className = 'panel';
+  after.innerHTML = `<div class="glyph">📘</div><h2>Course B window</h2>
+    <p><b>${fmt(targetDate)} → Dec 18</b> is open. Send the Course B syllabus and it slots in right here.</p>`;
+  host.appendChild(after);
+
+  updateDayHeaders();
+}
+
+function dayHead(day, di, isToday, isPast) {
+  const head = document.createElement('div');
+  head.className = 'day-head';
+  const d = day.date;
+  const main = day.items.length
+    ? day.items[0].name
+    : (day.isRest ? 'Rest day' : 'Buffer day');
+  const extra = day.items.length > 1 ? ` + ${day.items.length - 1} more` : '';
+  head.innerHTML = `
+    <div class="datechip ${isToday ? 'is-today' : ''}">
+      <div class="dow">${DOW[d.getDay()]}</div>
+      <div class="dnum">${d.getDate()}</div>
+    </div>
+    <div class="day-info">
+      <div class="day-title">${main}${extra}</div>
+      <div class="day-sub" id="ds-${di}"></div>
+    </div>
+    <div class="ring" id="dr-${di}"></div>`;
+  head.addEventListener('click', () => document.getElementById(`dbody-${di}`).classList.toggle('open'));
+  return head;
+}
+
+function updateDayHeaders() {
+  const t = today0();
+  schedule.forEach((day, di) => {
+    const card = document.getElementById(`dc-${di}`);
+    if (!card) return;
+    const d = new Date(day.date); d.setHours(0,0,0,0);
+    const isToday = d.getTime() === t.getTime();
+    const isPast = d < t;
+    const done = day.items.filter(i => isDone(i.key)).length;
+    const complete = day.items.length > 0 && done === day.items.length;
+
+    let cls = 'day-card';
+    if (isToday) cls += ' today';
+    else if (complete) cls += ' done';
+    else if (day.isRest) cls += ' rest';
+    else if (isPast) cls += ' past';
+    card.className = cls;
+
+    const sub = document.getElementById(`ds-${di}`);
+    const status = day.isRest ? 'rest'
+      : (day.items.length ? `${done}/${day.items.length} done` : 'buffer');
+    sub.innerHTML = `${fmt(day.date)} · ${status}` + (isToday ? ' · <span class="today-flag">TODAY</span>' : '');
+
+    const ring = document.getElementById(`dr-${di}`);
+    ring.className = 'ring' + (complete ? ' done' : (isToday ? ' current' : ''));
+    ring.textContent = complete ? '✓' : '';
+  });
+}
+
+// ═══ WIRING ═════════════════════════════════════════════════════════
+function refreshAll() { renderUnitView(); renderDayView(); updateStats(); }
+
+function switchView(v) {
+  document.getElementById('unit-view').style.display = v === 'unit' ? 'block' : 'none';
+  document.getElementById('day-view').style.display  = v === 'day'  ? 'block' : 'none';
+  document.getElementById('btn-unit').classList.toggle('active', v === 'unit');
+  document.getElementById('btn-day').classList.toggle('active', v === 'day');
+}
+document.getElementById('btn-unit').addEventListener('click', () => switchView('unit'));
+document.getElementById('btn-day').addEventListener('click', () => switchView('day'));
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (confirm('Reset all progress? This clears it on every device.')) { saveState({}); refreshAll(); }
+});
+
+document.getElementById('h-target').textContent = fmt(targetDate);
+document.getElementById('f-target').textContent = fmt(targetDate);
+
+refreshAll();
+</script>
+</body>
+</html>
